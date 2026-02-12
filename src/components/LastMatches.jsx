@@ -19,6 +19,8 @@ function LastMatches({ teamId, teamName }) {
   useEffect(() => {
     if (!teamId) return;
 
+    console.log("LastMatches mounted for:", { teamId, teamName });
+
     setLoading(true);
 
     fetch(
@@ -26,6 +28,9 @@ function LastMatches({ teamId, teamName }) {
     )
       .then(res => res.json())
       .then(data => {
+          // Debug: mostrar información básica de la respuesta
+          console.log("LastMatches fetched data (raw):", data);
+
         // Algunas respuestas pueden usar `results` o `events`,
         // y en ocasiones vienen como objeto en vez de array.
         let arr = [];
@@ -36,6 +41,8 @@ function LastMatches({ teamId, teamName }) {
 
         // Filtrar solo partidos donde participa el equipo seleccionado.
         // Preferir filtrar por id (más fiable). Si no hay ids, caer a comparar nombres.
+        console.log("LastMatches parsed events:", arr.map(m => ({ idEvent: m.idEvent, idHomeTeam: m.idHomeTeam, idAwayTeam: m.idAwayTeam, strHomeTeam: m.strHomeTeam, strAwayTeam: m.strAwayTeam })));
+
         let filtered = arr;
         if (teamId) {
           filtered = arr.filter(m => {
@@ -73,11 +80,16 @@ function LastMatches({ teamId, teamName }) {
         fetch(`https://www.thesportsdb.com/api/v1/json/3/eventsnext.php?id=${teamId}`)
           .then(res => res.json())
           .then(nextData => {
+            console.log("LastMatches fetched nextData (raw):", nextData);
+
             let nextArr = [];
             if (Array.isArray(nextData.events)) nextArr = nextData.events;
             else if (Array.isArray(nextData.results)) nextArr = nextData.results;
             else if (nextData.events) nextArr = Array.isArray(nextData.events) ? nextData.events : [nextData.events];
             else if (nextData.results) nextArr = Array.isArray(nextData.results) ? nextData.results : [nextData.results];
+
+            console.log("LastMatches parsed next events:", nextArr.map(m => ({ idEvent: m.idEvent, idHomeTeam: m.idHomeTeam, idAwayTeam: m.idAwayTeam, strHomeTeam: m.strHomeTeam, strAwayTeam: m.strAwayTeam })));
+
             // Filtrar próximos por id si es posible, fallback a nombre.
             let nextFiltered = nextArr;
             if (teamId) {
