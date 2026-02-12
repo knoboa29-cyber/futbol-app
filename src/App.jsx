@@ -39,7 +39,7 @@ function App() {
         onSelectTeam={setSelectedTeam}
       />
 
-      {selectedTeam && <TeamDetails team={selectedTeam} />}
+      {selectedTeam && <TeamDetails team={selectedTeam} league={league} />}
     </div>
   );
 }

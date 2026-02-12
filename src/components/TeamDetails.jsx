@@ -11,7 +11,7 @@ function normalizeName(name) {
     .trim();
 }
 
-function TeamDetails({ team }) {
+function TeamDetails({ team, league }) {
 
   const normalized = normalizeName(team.strTeam);
 
@@ -36,7 +36,7 @@ function TeamDetails({ team }) {
       <p><strong>País:</strong> {team.strCountry}</p>
       <p><strong>Estadio:</strong> {team.strStadium}</p>
 
-      <LastMatches teamId={team.idTeam} teamName={team.strTeam} />
+      <LastMatches teamId={team.idTeam} teamName={team.strTeam} league={league} />
     </div>
   );
 }

@@ -11,7 +11,7 @@ function normalizeName(name) {
     .trim();
 }
 
-function LastMatches({ teamId, teamName }) {
+function LastMatches({ teamId, teamName, league }) {
   const [matches, setMatches] = useState([]);
   const [loading, setLoading] = useState(true);
   
@@ -68,6 +68,8 @@ function LastMatches({ teamId, teamName }) {
           });
         }
 
+        console.log("LastMatches filtered past events:", filtered.map(m => ({ idEvent: m.idEvent, idHomeTeam: m.idHomeTeam, idAwayTeam: m.idAwayTeam, strHomeTeam: m.strHomeTeam, strAwayTeam: m.strAwayTeam })));
+
         // Si ya tenemos 5 o más, cortar y listo.
         if (filtered.length >= 5) {
           setMatches(filtered.slice(0, 5));
@@ -114,15 +116,89 @@ function LastMatches({ teamId, teamName }) {
               });
             }
 
+            console.log("LastMatches nextFiltered:", nextFiltered.map(m => ({ idEvent: m.idEvent, idHomeTeam: m.idHomeTeam, idAwayTeam: m.idAwayTeam, strHomeTeam: m.strHomeTeam, strAwayTeam: m.strAwayTeam })));
+
             const take = nextFiltered.slice(0, needed);
-            const combined = filtered.concat(take).slice(0, 5);
-            setMatches(combined);
-            setLoading(false);
+            let combined = filtered.concat(take).slice(0, 5);
+
+            if (combined.length < 5 && league && teamName) {
+              // Intentar completar con el calendario de la liga
+              fetch(
+                `https://www.thesportsdb.com/api/v1/json/3/eventsseason.php?l=${encodeURIComponent(league)}`
+              )
+                .then(res => res.json())
+                .then(seasonData => {
+                  let seasonArr = [];
+                  if (Array.isArray(seasonData.events)) seasonArr = seasonData.events;
+                  else if (Array.isArray(seasonData.results)) seasonArr = seasonData.results;
+                  else if (seasonData.events) seasonArr = Array.isArray(seasonData.events) ? seasonData.events : [seasonData.events];
+                  else if (seasonData.results) seasonArr = Array.isArray(seasonData.results) ? seasonData.results : [seasonData.results];
+
+                  const target = normalizeName(teamName);
+                  const seasonFiltered = seasonArr.filter(m => {
+                    const home = normalizeName(m.strHomeTeam || "");
+                    const away = normalizeName(m.strAwayTeam || "");
+                    return home === target || away === target;
+                  });
+
+                  console.log("LastMatches seasonFiltered:", seasonFiltered.map(m => ({ idEvent: m.idEvent, idHomeTeam: m.idHomeTeam, idAwayTeam: m.idAwayTeam, strHomeTeam: m.strHomeTeam, strAwayTeam: m.strAwayTeam })));
+
+                  // añadir los que falten sin duplicar
+                  const ids = new Set(combined.map(e => e && e.idEvent));
+                  for (const ev of seasonFiltered) {
+                    if (combined.length >= 5) break;
+                    if (!ids.has(ev.idEvent)) {
+                      combined.push(ev);
+                      ids.add(ev.idEvent);
+                    }
+                  }
+
+                  setMatches(combined.slice(0, 5));
+                  setLoading(false);
+                })
+                .catch(() => {
+                  setMatches(combined);
+                  setLoading(false);
+                });
+            } else {
+              setMatches(combined);
+              setLoading(false);
+            }
           })
           .catch(() => {
-            // Si falla el fetch de próximos, usar los que haya.
-            setMatches(arr);
-            setLoading(false);
+            // Si falla el fetch de próximos, intentar obtener del calendario de la liga (si se pasó `league`).
+            if (league && teamName) {
+              fetch(
+                `https://www.thesportsdb.com/api/v1/json/3/eventsseason.php?l=${encodeURIComponent(league)}`
+              )
+                .then(res => res.json())
+                .then(seasonData => {
+                  let seasonArr = [];
+                  if (Array.isArray(seasonData.events)) seasonArr = seasonData.events;
+                  else if (Array.isArray(seasonData.results)) seasonArr = seasonData.results;
+                  else if (seasonData.events) seasonArr = Array.isArray(seasonData.events) ? seasonData.events : [seasonData.events];
+                  else if (seasonData.results) seasonArr = Array.isArray(seasonData.results) ? seasonData.results : [seasonData.results];
+
+                  const target = normalizeName(teamName);
+                  const seasonFiltered = seasonArr.filter(m => {
+                    const home = normalizeName(m.strHomeTeam || "");
+                    const away = normalizeName(m.strAwayTeam || "");
+                    return home === target || away === target;
+                  });
+
+                  const combined2 = filtered.concat(seasonFiltered).slice(0, 5);
+                  setMatches(combined2);
+                  setLoading(false);
+                })
+                .catch(() => {
+                  setMatches(filtered);
+                  setLoading(false);
+                });
+            } else {
+              // Si no hay liga o falla, usar los que haya.
+              setMatches(filtered);
+              setLoading(false);
+            }
           });
       })
       .catch(() => {
@@ -140,43 +216,65 @@ function LastMatches({ teamId, teamName }) {
       <h3>Últimos partidos</h3>
 
       <p style={{ fontSize: 13, opacity: 0.8 }}>
-        Resultados encontrados: {matches.length}
+        Resultados encontrados: {matches.length} — Mostrando {Math.min(matches.length,5)} / 5
       </p>
 
       <div className="matches-list">
-        {matches.map((match, idx) => {
-          const homeLogo =
-            teamLogos[match.strHomeTeam] ||
-            teamLogos[normalizeName(match.strHomeTeam)];
+        {(() => {
+          const displayList = [...matches.slice(0, 5)];
+          while (displayList.length < 5) displayList.push(null);
 
-          const awayLogo =
-            teamLogos[match.strAwayTeam] ||
-            teamLogos[normalizeName(match.strAwayTeam)];
+          return displayList.map((match, idx) => {
+            const homeLogo = match
+              ? teamLogos[match.strHomeTeam] || teamLogos[normalizeName(match.strHomeTeam)]
+              : null;
 
-          return (
-            <div className="match-card" key={match.idEvent || idx}>
-              <div className="match-date">{match.dateEvent}</div>
+            const awayLogo = match
+              ? teamLogos[match.strAwayTeam] || teamLogos[normalizeName(match.strAwayTeam)]
+              : null;
 
-              <div className="match-row">
-
-                <div className="team-block">
-                  {homeLogo && <img src={homeLogo} alt="" />}
-                  <span>{match.strHomeTeam}</span>
+            if (!match) {
+              return (
+                <div className="match-card" key={`empty-${idx}`}>
+                  <div className="match-date">-</div>
+                  <div className="match-row">
+                    <div className="team-block">
+                      <span style={{ opacity: 0.6 }}>Sin más datos</span>
+                    </div>
+                    <div className="score-block">- : -</div>
+                    <div className="team-block">
+                      <span style={{ opacity: 0.6 }}>Sin más datos</span>
+                    </div>
+                  </div>
                 </div>
+              );
+            }
 
-                <div className="score-block">
-                  {match.intHomeScore ?? "-"} : {match.intAwayScore ?? "-"}
+            return (
+              <div className="match-card" key={match.idEvent || idx}>
+                <div className="match-date">{match.dateEvent}</div>
+
+                <div className="match-row">
+
+                  <div className="team-block">
+                    {homeLogo && <img src={homeLogo} alt="" />}
+                    <span>{match.strHomeTeam}</span>
+                  </div>
+
+                  <div className="score-block">
+                    {match.intHomeScore ?? "-"} : {match.intAwayScore ?? "-"}
+                  </div>
+
+                  <div className="team-block">
+                    {awayLogo && <img src={awayLogo} alt="" />}
+                    <span>{match.strAwayTeam}</span>
+                  </div>
+
                 </div>
-
-                <div className="team-block">
-                  {awayLogo && <img src={awayLogo} alt="" />}
-                  <span>{match.strAwayTeam}</span>
-                </div>
-
               </div>
-            </div>
-          );
-        })}
+            );
+          });
+        })()}
       </div>
 
       
